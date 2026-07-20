@@ -215,6 +215,10 @@ $$\text{Total Cost} = \left[ (C_{\text{beam}} + C_{\text{cross}} + C_{\text{post
 Sums the physical mass of all components to output the final expected weight of the structure.
 $$M_{\text{total}} = M_{\text{beams}} + M_{\text{cross}} + M_{\text{deck}} + M_{\text{posts}} + M_{\text{rails}}$$
 
+
+
+(disclaimer this discription was created with the help of ai)
+
 ## Author
 
 Sajjad Mohammed - 2026.
