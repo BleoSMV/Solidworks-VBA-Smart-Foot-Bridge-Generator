@@ -73,7 +73,7 @@ code.
 ## Equations
 # Structural & Layout Calculations
 
-This details the mathematical models, fixed constants, and data structures used by the SmartBridge API to validate footbridge designs, calculate utilisations, generate CAD models, and estimate project costs.
+This section details the mathematical models, fixed constants, and data structures used by the SmartBridge API to validate footbridge designs, calculate utilisations, generate CAD models, and estimate project costs.
 
 ## 1. System Constants & Fixed Geometry
 
@@ -108,17 +108,28 @@ Before structural validation can occur, the raw inputs are converted into a unif
 
 **Rail and Cross-Member Allowance**
 Accounts for the base weight of the cross members and scales the rail allowance based on the specified guardrail height.
-$$q_{\text{rc}} = q_{\text{cross\_allow}} + q_{\text{rail\_allow}} \left( \frac{h_{\text{rail}}}{1100} \right)$$
+$$q_{\text{rc}} = q_{\text{cross\\_allow}} + q_{\text{rail\\_allow}} \left( \frac{h_{\text{rail}}}{1100} \right)$$
 
 **Total Area Load (excluding main beams)**
 Combines live loads (factored for dynamic effects) and deck loads across the width of the bridge, adding the allowances.
-$$q_{\text{deck\_total}} = \left( q_{\text{live}} \cdot f_{\text{dyn}} + q_{\text{deck}} \right) W_{\text{bridge}} + q_{\text{rc}}$$
+$$q_{\text{deck\\_total}} = \left( q_{\text{live}} \cdot f_{\text{dyn}} + q_{\text{deck}} \right) W_{\text{bridge}} + q_{\text{rc}}$$
 
 **Line Load Per Main Beam (`qBeam` or $w$)**
 Distributes the total deck load to the two main structural beams and adds the self-weight of the selected beam section.
-$$w = \frac{q_{\text{deck\_total}}}{2} + (m_{\text{beam}} \cdot g)$$
+$$w = \frac{q_{\text{deck\\_total}}}{2} + (m_{\text{beam}} \cdot g)$$
 
 *(Note: $w$ corresponds to `qBeam` in the `SectionCalc` structure).*
+
+*Where:*
+*   $q_{\text{cross\\_allow}}$ = Cross member allowance (**0.2 kN/m**)
+*   $q_{\text{rail\\_allow}}$ = Base rail allowance (**0.35 kN/m**)
+*   $h_{\text{rail}}$ = Guard rail height ($mm$)
+*   $q_{\text{live}}$ = Live load class ($kN/m^2$)
+*   $f_{\text{dyn}}$ = Dynamic factor (**1.15** if dynamic, **1.0** if static)
+*   $q_{\text{deck}}$ = Deck load ($kN/m^2$)
+*   $W_{\text{bridge}}$ = Bridge width ($m$)
+*   $m_{\text{beam}}$ = Mass of selected beam section ($kg/m$)
+*   $g$ = Gravity (**9.81 m/s²**)
 
 ---
 
@@ -203,9 +214,9 @@ Calculates total material mass and applies financial unit costs depending on mat
 **Component Costs**
 *   **Main Beams:** $C_{\text{beam}} = 2 \cdot L \cdot Cost_{\text{beam}}$
 *   **Cross Members:** $C_{\text{cross}} = n_{\text{cross}} \cdot W_{\text{bridge}} \cdot Cost_{\text{cross}}$
-*   **Posts:** $C_{\text{post}} = n_{\text{posts}} \cdot Cost_{\text{post\_ea}}$
+*   **Posts:** $C_{\text{post}} = n_{\text{posts}} \cdot Cost_{\text{post\\_ea}}$
 *   **Rails & Kickplates:** $C_{\text{rail}} = (4 \cdot L \cdot Cost_{\text{rail}}) + (2 \cdot L \cdot Cost_{\text{kickplate}})$
-*   **Decking:** $C_{\text{deck}} = L \cdot W_{\text{bridge}} \cdot Cost_{\text{deck\_type}}$
+*   **Decking:** $C_{\text{deck}} = L \cdot W_{\text{bridge}} \cdot Cost_{\text{deck\\_type}}$
 
 **Total Project Cost (`totalCost`)**
 Steelwork costs are scaled by a multiplier derived from the chosen finish.
@@ -214,7 +225,6 @@ $$\text{Total Cost} = \left[ (C_{\text{beam}} + C_{\text{cross}} + C_{\text{post
 **Total Mass (`totalMass`)**
 Sums the physical mass of all components to output the final expected weight of the structure.
 $$M_{\text{total}} = M_{\text{beams}} + M_{\text{cross}} + M_{\text{deck}} + M_{\text{posts}} + M_{\text{rails}}$$
-
 
 ## Author
 
