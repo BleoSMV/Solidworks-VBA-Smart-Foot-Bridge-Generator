@@ -80,3 +80,23 @@ report for the full reflection and planned improvements.
 ## Author
 
 Sajjad Mohammed - 2026.
+
+License
+
+Copyright (c) 2026 Sajjad Mohammed. All rights reserved. This is not an
+open-source project — see LICENSE.txt for the full terms. In
+short:
+
+
+Personal and educational use is free. Individuals, students and
+educators may view, download, run and modify the code for non-commercial
+purposes.
+You may not pass this work off as your own. No submitting it (or a
+derivative) for academic assessment, republishing it under your own name,
+or redistributing it without written permission.
+Commercial use requires a written agreement with the author. Any
+business or commercial use must be discussed with me and terms agreed
+before use begins — contact me via [INSERT email or GitHub profile].
+No warranty, no liability. The software is provided as is. It performs
+illustrative structural calculations for an academic project and must not
+be relied upon for the design of any real structure.
