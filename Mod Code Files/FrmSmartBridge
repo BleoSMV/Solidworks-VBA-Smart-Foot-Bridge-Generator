@@ -1,0 +1,1560 @@
+Option Explicit
+
+
+
+Private Const PI As Double = 3.14159265358979
+Private Const G As Double = 9.81
+Private Const MIN_FREQ_HZ As Double = 2.5
+
+Private Const BASE_RAIL_ALLOWANCE_KN_M As Double = 0.35
+Private Const CROSS_MEMBER_ALLOWANCE_KN_M As Double = 0.2
+
+Private Const CROSS_MEMBER_COST_GBP_M As Double = 18#
+Private Const CROSS_MEMBER_MASS_KG_M As Double = 7#
+Private Const POST_COST_GBP_EA As Double = 35#
+Private Const POST_MASS_KG_EA As Double = 5#
+Private Const RAIL_COST_GBP_M As Double = 22#
+Private Const RAIL_MASS_KG_M As Double = 3#
+Private Const KICKPLATE_COST_GBP_M As Double = 14#
+
+
+Private secCount As Long
+Private secName() As String
+Private secDepth() As Double
+Private secWidth() As Double
+Private secArea() As Double
+Private secIxx() As Double
+Private secZxx() As Double
+Private secMass() As Double
+Private secCost() As Double
+
+
+Private matCount As Long
+Private matName() As String
+Private matE() As Double
+Private matFy() As Double
+Private matDensity() As Double
+
+
+Private finCount As Long
+Private finName() As String
+Private finMult() As Double
+Private finR() As Long
+Private finG() As Long
+Private finB() As Long
+
+
+Private mLoading As Boolean
+Private mChecked As Boolean
+Private mSound As Boolean
+
+
+Private mBestIdx As Long
+Private mSelectedSection As String
+Private mSpanM As Double
+Private mBridgeWidthM As Double
+Private mTotalCost As Double
+Private mTotalMass As Double
+Private mCrossMembers As Long
+Private mPosts As Long
+Private mDeckPanels As Long
+Private mActualCrossSpacingM As Double
+Private mFinishR As Long
+Private mFinishG As Long
+Private mFinishB As Long
+Private mFinishMultiplier As Double
+
+
+
+Private Sub UserForm_Initialize()
+
+    mLoading = True
+
+    Me.Caption = "SmartBridge API - Structural Design Validator"
+
+    txtProjectName.Text = "Bridge"
+    txtSavePath.Text = "J:\api 206\Output"
+    txtDataFile.Text = "J:\api 206\SmartBridgeSections\SmartBridgeData.xlsx"
+
+    LoadBuiltInData
+
+    If FileExistsSB(txtDataFile.Text) Then
+        LoadDataWorkbook txtDataFile.Text, True
+    End If
+
+    cboWidth.Clear
+    cboWidth.AddItem "1.2 m - narrow footbridge"
+    cboWidth.AddItem "1.5 m - standard footbridge"
+    cboWidth.AddItem "1.8 m - wide footbridge"
+    cboWidth.AddItem "2.0 m - maintenance access"
+    cboWidth.AddItem "2.5 m - wide access bridge"
+    cboWidth.ListIndex = 1
+
+    cboLoadClass.Clear
+    cboLoadClass.AddItem "3.0 kN/m2 - light pedestrian"
+    cboLoadClass.AddItem "5.0 kN/m2 - standard pedestrian"
+    cboLoadClass.AddItem "7.5 kN/m2 - crowd loading"
+    cboLoadClass.AddItem "10.0 kN/m2 - heavy crowd loading"
+    cboLoadClass.ListIndex = 1
+
+    cboDeck.Clear
+    cboDeck.AddItem "Timber deck - 0.40 kN/m2"
+    cboDeck.AddItem "Steel checker plate - 0.75 kN/m2"
+    cboDeck.AddItem "GRP deck - 0.30 kN/m2"
+    cboDeck.ListIndex = 1
+
+    txtSpan.Text = "6.0"
+    txtSafetyFactor.Text = "1.50"
+    txtDeflectionRatio.Text = "360"
+    txtCrossSpacing.Text = "1000"
+    txtPostSpacing.Text = "1500"
+    txtRailHeight.Text = "1100"
+    txtPanelLength.Text = "1000"
+
+    chkDynamic.Value = True
+    chkLightest.Value = True
+
+    txtValidationReport.Locked = True
+    txtValidationReport.Text = "Press Validate Design to calculate structural soundness."
+
+    lblStatusValue.Caption = "NOT CHECKED"
+    lblStatusValue.ForeColor = vbBlack
+
+    cmdCreate.Enabled = False
+
+    mLoading = False
+
+    CalculateAndDisplay True
+
+End Sub
+
+
+
+Private Sub cmdLoadSections_Click()
+
+    Dim ok As Boolean
+    Dim msg As String
+
+    ok = LoadDataWorkbook(txtDataFile.Text, False)
+
+    If ok Then
+        msg = "Workbook data loaded successfully." & vbCrLf & vbCrLf
+        msg = msg & "Workbook:" & vbCrLf
+        msg = msg & NormalizeFilePath(txtDataFile.Text) & vbCrLf & vbCrLf
+        msg = msg & "Materials loaded: " & matCount & vbCrLf
+        msg = msg & "Finishes loaded: " & finCount & vbCrLf
+        msg = msg & "Sections loaded: " & secCount
+
+        MsgBox msg, vbInformation, "SmartBridge workbook loaded"
+    End If
+
+    CalculateAndDisplay True
+
+End Sub
+
+Private Sub cmdValidate_Click()
+
+    If CalculateAndDisplay(False) Then
+        MsgBox "Design passes the structural validation checks.", vbInformation, "SmartBridge validation"
+    Else
+        MsgBox "Design does not pass. See the validation box for details.", vbExclamation, "SmartBridge validation"
+    End If
+
+End Sub
+
+Private Sub cmdCreate_Click()
+
+    If Not mSound Then
+        If Not CalculateAndDisplay(False) Then
+            MsgBox "The model cannot be created because the design has not passed validation.", vbExclamation, "Create SolidWorks model"
+            Exit Sub
+        End If
+    End If
+
+    BuildBridgeFromForm Me
+
+End Sub
+
+Private Sub cmdReset_Click()
+
+    mLoading = True
+
+    txtProjectName.Text = "Bridge_6m_Test"
+    txtSavePath.Text = "J:\api 206\Output"
+    txtDataFile.Text = "J:\api 206\SmartBridgeSections\SmartBridgeData.xlsx"
+    txtSpan.Text = "6.0"
+    cboWidth.ListIndex = 1
+    cboLoadClass.ListIndex = 1
+    If cboMaterial.ListCount > 0 Then cboMaterial.ListIndex = 0
+    cboDeck.ListIndex = 1
+    If cboFinish.ListCount > 0 Then cboFinish.ListIndex = 0
+    txtSafetyFactor.Text = "1.50"
+    txtDeflectionRatio.Text = "360"
+    txtCrossSpacing.Text = "1000"
+    txtPostSpacing.Text = "1500"
+    txtRailHeight.Text = "1100"
+    txtPanelLength.Text = "1000"
+    chkDynamic.Value = True
+    chkLightest.Value = True
+
+    mLoading = False
+
+    CalculateAndDisplay True
+
+End Sub
+
+Private Sub cmdClose_Click()
+    Unload Me
+End Sub
+
+
+Private Sub txtSpan_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub cboWidth_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub cboLoadClass_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub cboMaterial_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub cboDeck_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub cboFinish_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub txtSafetyFactor_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub txtDeflectionRatio_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub txtCrossSpacing_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub txtPostSpacing_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub txtRailHeight_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub txtPanelLength_Change()
+    AnyInputChanged
+End Sub
+
+Private Sub chkDynamic_Click()
+    AnyInputChanged
+End Sub
+
+Private Sub chkLightest_Click()
+    AnyInputChanged
+End Sub
+
+Private Sub AnyInputChanged()
+
+    If mLoading Then Exit Sub
+
+    mChecked = False
+    mSound = False
+    cmdCreate.Enabled = False
+
+    CalculateAndDisplay True
+
+End Sub
+
+
+
+Private Function CalculateAndDisplay(ByVal quiet As Boolean) As Boolean
+
+    Dim inp As BridgeInputs
+    Dim temp As SectionCalc
+    Dim result As SectionCalc
+    Dim lay As LayoutCalc
+    Dim errMsg As String
+    Dim i As Long
+    Dim bestIdx As Long
+    Dim failIdx As Long
+    Dim bestScore As Double
+    Dim failUtil As Double
+    Dim candidatePass As Boolean
+    Dim score As Double
+
+    CalculateAndDisplay = False
+    mSound = False
+    cmdCreate.Enabled = False
+
+    If secCount <= 0 Then
+        SetStatus "NO SECTION DATA", vbRed
+        txtValidationReport.Text = "No section database is loaded."
+        Exit Function
+    End If
+
+    If Not TryReadInputs(inp, errMsg) Then
+        SetStatus "INPUT ERROR", vbRed
+        txtValidationReport.Text = errMsg
+        Exit Function
+    End If
+
+    bestIdx = 0
+    failIdx = 0
+    bestScore = 1E+99
+    failUtil = 1E+99
+
+    For i = 1 To secCount
+
+        CalcSection i, inp, temp
+
+        candidatePass = False
+
+        If temp.uB <= 1# Then
+            If temp.uS <= 1# Then
+                If temp.uVM <= 1# Then
+                    If temp.uD <= 1# Then
+                        If temp.uF <= 1# Then
+                            candidatePass = True
+                        End If
+                    End If
+                End If
+            End If
+        End If
+
+        If temp.uMax < failUtil Then
+            failUtil = temp.uMax
+            failIdx = i
+        End If
+
+        If candidatePass Then
+            If chkLightest.Value = True Then
+                score = secMass(i)
+            Else
+                score = secCost(i)
+            End If
+
+            If score < bestScore Then
+                bestScore = score
+                bestIdx = i
+            End If
+        End If
+
+    Next i
+
+    If bestIdx > 0 Then
+        mSound = True
+        mBestIdx = bestIdx
+    Else
+        mSound = False
+        mBestIdx = failIdx
+    End If
+
+    If mBestIdx <= 0 Then
+        SetStatus "NO VALID SECTION", vbRed
+        txtValidationReport.Text = "No usable beam section could be selected." & vbCrLf & vbCrLf & _
+                                   "This usually means the span/load is too high for the sections currently loaded." & vbCrLf & _
+                                   "Press Load workbook and confirm your Sections sheet is being read."
+        Exit Function
+    End If
+
+    CalcSection mBestIdx, inp, result
+    EstimateLayoutAndCost mBestIdx, inp, lay
+
+    txtValidationReport.Text = FormatValidationReport(mSound, mBestIdx, inp, result, lay)
+
+    mChecked = True
+    mSpanM = inp.SpanM
+    mBridgeWidthM = inp.BridgeWidthM
+    mSelectedSection = secName(mBestIdx)
+    mCrossMembers = lay.nCross
+    mPosts = lay.nPosts
+    mDeckPanels = lay.nPanels
+    mActualCrossSpacingM = lay.actualCrossSpacing
+    mTotalCost = lay.totalCost
+    mTotalMass = lay.totalMass
+    mFinishR = inp.finishR
+    mFinishG = inp.finishG
+    mFinishB = inp.finishB
+    mFinishMultiplier = inp.finishMult
+
+    If mSound Then
+        SetStatus "PASS - STRUCTURALLY SOUND", RGB(0, 128, 0)
+        cmdCreate.Enabled = True
+        CalculateAndDisplay = True
+    Else
+        SetStatus "FAIL - CHANGE DESIGN", vbRed
+        cmdCreate.Enabled = False
+        CalculateAndDisplay = False
+    End If
+
+End Function
+
+Private Function TryReadInputs(ByRef inp As BridgeInputs, ByRef errMsg As String) As Boolean
+
+    TryReadInputs = False
+
+    If Len(Trim$(txtProjectName.Text)) = 0 Then
+        errMsg = "Project name cannot be blank."
+        GoTo BadInput
+    End If
+
+    If Len(Trim$(txtSavePath.Text)) = 0 Then
+        errMsg = "Save folder cannot be blank."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtSpan.Text, inp.SpanM) Then
+        errMsg = "Bridge span must be a positive non-zero number."
+        GoTo BadInput
+    End If
+
+    If inp.SpanM <= 0# Then
+        errMsg = "Bridge span must be greater than zero."
+        GoTo BadInput
+    End If
+
+    If inp.SpanM > 60# Then
+        errMsg = "Bridge span is very large for this macro. Use 60 m or less, or add larger sections to the workbook."
+        GoTo BadInput
+    End If
+
+    If Len(cboWidth.Value) = 0 Then
+        errMsg = "Select a preferred bridge width."
+        GoTo BadInput
+    End If
+
+    inp.BridgeWidthM = Val(cboWidth.Value)
+
+    If inp.BridgeWidthM <= 0# Then
+        errMsg = "Bridge width must be positive."
+        GoTo BadInput
+    End If
+
+    If Len(cboLoadClass.Value) = 0 Then
+        errMsg = "Select a live load class."
+        GoTo BadInput
+    End If
+
+    inp.qLive = Val(cboLoadClass.Value)
+
+    If inp.qLive <= 0# Then
+        errMsg = "Live load class is invalid."
+        GoTo BadInput
+    End If
+
+    If Not GetMaterial(cboMaterial.Value, inp.YoungsE, inp.Fy, inp.density) Then
+        errMsg = "Select a valid material from the Materials worksheet."
+        GoTo BadInput
+    End If
+
+    If Not GetDeck(cboDeck.Value, inp.qDeck, inp.deckCost) Then
+        errMsg = "Select a valid deck type."
+        GoTo BadInput
+    End If
+
+    If Not GetFinish(cboFinish.Value, inp.finishMult, inp.finishR, inp.finishG, inp.finishB) Then
+        errMsg = "Select a valid finish from the Finishes worksheet."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtSafetyFactor.Text, inp.FoS) Then
+        errMsg = "Safety factor must be a positive number."
+        GoTo BadInput
+    End If
+
+    If inp.FoS < 1# Then
+        errMsg = "Safety factor must be 1.00 or greater."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtDeflectionRatio.Text, inp.deflRatio) Then
+        errMsg = "Deflection ratio must be a positive number, e.g. 360."
+        GoTo BadInput
+    End If
+
+    If inp.deflRatio < 100# Then
+        errMsg = "Deflection ratio must be 100 or greater."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtCrossSpacing.Text, inp.crossSpacingMM) Then
+        errMsg = "Cross member spacing must be positive."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtPostSpacing.Text, inp.postSpacingMM) Then
+        errMsg = "Post spacing must be positive."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtRailHeight.Text, inp.railHeightMM) Then
+        errMsg = "Guard rail height must be positive."
+        GoTo BadInput
+    End If
+
+    If Not TryPositiveDouble(txtPanelLength.Text, inp.panelLengthMM) Then
+        errMsg = "Deck panel length must be positive."
+        GoTo BadInput
+    End If
+
+    If chkDynamic.Value = True Then
+        inp.dynFactor = 1.15
+    Else
+        inp.dynFactor = 1#
+    End If
+
+    TryReadInputs = True
+    Exit Function
+
+BadInput:
+
+    errMsg = "Input validation failed:" & vbCrLf & " - " & errMsg
+
+End Function
+
+Private Sub CalcSection(ByVal idx As Long, ByRef inp As BridgeInputs, ByRef r As SectionCalc)
+
+    Dim qRailAndCross_kN_m As Double
+    Dim qTotalNoBeam_N_m As Double
+    Dim allowBending As Double
+    Dim allowShear As Double
+    Dim deltaLimit As Double
+    Dim massLine As Double
+
+    If idx <= 0 Or idx > secCount Then
+        r.uMax = 999#
+        Exit Sub
+    End If
+
+    If secArea(idx) <= 0# Or secIxx(idx) <= 0# Or secZxx(idx) <= 0# Then
+        r.uMax = 999#
+        r.uB = 999#
+        r.uS = 999#
+        r.uVM = 999#
+        r.uD = 999#
+        r.uF = 999#
+        Exit Sub
+    End If
+
+    qRailAndCross_kN_m = CROSS_MEMBER_ALLOWANCE_KN_M
+    qRailAndCross_kN_m = qRailAndCross_kN_m + BASE_RAIL_ALLOWANCE_KN_M * (inp.railHeightMM / 1100#)
+
+    qTotalNoBeam_N_m = ((inp.qLive * inp.dynFactor) + inp.qDeck) * inp.BridgeWidthM
+    qTotalNoBeam_N_m = qTotalNoBeam_N_m + qRailAndCross_kN_m
+    qTotalNoBeam_N_m = qTotalNoBeam_N_m * 1000#
+
+    r.qBeam = (qTotalNoBeam_N_m / 2#) + (secMass(idx) * G)
+
+    r.M = r.qBeam * (inp.SpanM ^ 2) / 8#
+    r.V = r.qBeam * inp.SpanM / 2#
+
+    r.sigma = r.M / secZxx(idx)
+    r.tau = 1.5 * r.V / secArea(idx)
+    r.vm = Sqr((r.sigma ^ 2) + (3# * (r.tau ^ 2)))
+
+    r.delta = (5# * r.qBeam * (inp.SpanM ^ 4)) / (384# * inp.YoungsE * secIxx(idx))
+
+    massLine = r.qBeam / G
+
+    If massLine > 0# Then
+        r.f1 = (PI / 2#) * Sqr((inp.YoungsE * secIxx(idx)) / (massLine * (inp.SpanM ^ 4)))
+    Else
+        r.f1 = 0#
+    End If
+
+    allowBending = inp.Fy / inp.FoS
+    allowShear = (inp.Fy / Sqr(3#)) / inp.FoS
+    deltaLimit = inp.SpanM / inp.deflRatio
+
+    r.uB = r.sigma / allowBending
+    r.uS = r.tau / allowShear
+    r.uVM = r.vm / allowBending
+    r.uD = r.delta / deltaLimit
+
+    If r.f1 <= 0# Then
+        r.uF = 999#
+    Else
+        r.uF = MIN_FREQ_HZ / r.f1
+    End If
+
+    r.uMax = Max6(r.uB, r.uS, r.uVM, r.uD, r.uF, 0#)
+
+End Sub
+
+Private Sub EstimateLayoutAndCost(ByVal idx As Long, ByRef inp As BridgeInputs, ByRef lay As LayoutCalc)
+
+    Dim crossSpacingM As Double
+    Dim postSpacingM As Double
+    Dim panelLengthM As Double
+    Dim nPostsPerSide As Long
+    Dim mainBeamCost As Double
+    Dim crossCost As Double
+    Dim deckCostTotal As Double
+    Dim postCost As Double
+    Dim railCost As Double
+    Dim steelworkCost As Double
+    Dim mainBeamMass As Double
+    Dim crossMass As Double
+    Dim deckMass As Double
+    Dim postMass As Double
+    Dim railMass As Double
+
+    crossSpacingM = inp.crossSpacingMM / 1000#
+    postSpacingM = inp.postSpacingMM / 1000#
+    panelLengthM = inp.panelLengthMM / 1000#
+
+    lay.nCross = CeilingLong(inp.SpanM / crossSpacingM) + 1
+    If lay.nCross < 2 Then lay.nCross = 2
+    lay.actualCrossSpacing = inp.SpanM / (lay.nCross - 1)
+
+    nPostsPerSide = CeilingLong(inp.SpanM / postSpacingM) + 1
+    If nPostsPerSide < 2 Then nPostsPerSide = 2
+    lay.nPosts = nPostsPerSide * 2
+
+    lay.nPanels = CeilingLong(inp.SpanM / panelLengthM)
+    If lay.nPanels < 1 Then lay.nPanels = 1
+
+    mainBeamCost = 2# * inp.SpanM * secCost(idx)
+    crossCost = lay.nCross * inp.BridgeWidthM * CROSS_MEMBER_COST_GBP_M
+    deckCostTotal = inp.SpanM * inp.BridgeWidthM * inp.deckCost
+    postCost = lay.nPosts * POST_COST_GBP_EA
+    railCost = (4# * inp.SpanM * RAIL_COST_GBP_M) + (2# * inp.SpanM * KICKPLATE_COST_GBP_M)
+
+    steelworkCost = mainBeamCost + crossCost + postCost + railCost
+    lay.totalCost = (steelworkCost * inp.finishMult) + deckCostTotal
+
+    mainBeamMass = 2# * inp.SpanM * secMass(idx)
+    crossMass = lay.nCross * inp.BridgeWidthM * CROSS_MEMBER_MASS_KG_M
+    deckMass = (inp.qDeck * 1000# / G) * inp.SpanM * inp.BridgeWidthM
+    postMass = lay.nPosts * POST_MASS_KG_EA
+    railMass = 4# * inp.SpanM * RAIL_MASS_KG_M
+
+    lay.totalMass = mainBeamMass + crossMass + deckMass + postMass + railMass
+
+End Sub
+
+Private Function FormatValidationReport(ByVal resultPass As Boolean, ByVal idx As Long, ByRef inp As BridgeInputs, ByRef r As SectionCalc, ByRef lay As LayoutCalc) As String
+
+    Dim s As String
+    Dim passText As String
+    Dim qRailAndCross As Double
+
+    If resultPass Then
+        passText = "PASS - STRUCTURALLY SOUND"
+    Else
+        passText = "FAIL - CHANGE INPUTS OR ADD LARGER SECTION"
+    End If
+
+    qRailAndCross = CROSS_MEMBER_ALLOWANCE_KN_M
+    qRailAndCross = qRailAndCross + BASE_RAIL_ALLOWANCE_KN_M * (inp.railHeightMM / 1100#)
+
+    s = ""
+    s = s & "STRUCTURAL VALIDATION RESULT: " & passText & vbCrLf
+    s = s & String$(64, "-") & vbCrLf
+    s = s & "INPUTS" & vbCrLf
+    s = s & "Project: " & txtProjectName.Text & vbCrLf
+    s = s & "Span L: " & Format$(inp.SpanM, "0.00") & " m" & vbCrLf
+    s = s & "Bridge width: " & Format$(inp.BridgeWidthM, "0.00") & " m" & vbCrLf
+    s = s & "Material: " & cboMaterial.Value & vbCrLf
+    s = s & "Finish: " & cboFinish.Value & "  RGB(" & inp.finishR & "," & inp.finishG & "," & inp.finishB & ")" & vbCrLf
+    s = s & "Live load: " & Format$(inp.qLive, "0.00") & " kN/m2" & vbCrLf
+    s = s & "Dynamic factor: " & Format$(inp.dynFactor, "0.00") & vbCrLf
+    s = s & "Deck load: " & Format$(inp.qDeck, "0.00") & " kN/m2" & vbCrLf
+    s = s & "Rail/cross allowance: " & Format$(qRailAndCross, "0.00") & " kN/m" & vbCrLf
+    s = s & "Safety factor: " & Format$(inp.FoS, "0.00") & vbCrLf
+    s = s & "Deflection limit: L/" & Format$(inp.deflRatio, "0") & vbCrLf & vbCrLf
+
+    s = s & "SELECTED PREFERRED SECTION" & vbCrLf
+    s = s & "Beam: " & secName(idx) & vbCrLf
+    s = s & "Depth: " & Format$(secDepth(idx) * 1000#, "0") & " mm" & vbCrLf
+    s = s & "Width: " & Format$(secWidth(idx) * 1000#, "0") & " mm" & vbCrLf
+    s = s & "Area: " & Format$(secArea(idx) * 1000000#, "0") & " mm2" & vbCrLf
+    s = s & "Ixx: " & Format$(secIxx(idx) * 1000000000000#, "0") & " mm4" & vbCrLf
+    s = s & "Zxx: " & Format$(secZxx(idx) * 1000000000#, "0") & " mm3" & vbCrLf
+    s = s & "Mass: " & Format$(secMass(idx), "0.0") & " kg/m" & vbCrLf & vbCrLf
+
+    s = s & "STRUCTURAL RESULTS PER MAIN BEAM" & vbCrLf
+    s = s & "Line load w: " & Format$(r.qBeam / 1000#, "0.00") & " kN/m" & vbCrLf
+    s = s & "Max moment M: " & Format$(r.M / 1000#, "0.00") & " kNm" & vbCrLf
+    s = s & "Max shear V: " & Format$(r.V / 1000#, "0.00") & " kN" & vbCrLf
+    s = s & "Bending stress: " & Format$(r.sigma / 1000000#, "0.0") & " MPa" & vbCrLf
+    s = s & "Shear stress: " & Format$(r.tau / 1000000#, "0.0") & " MPa" & vbCrLf
+    s = s & "Von Mises stress: " & Format$(r.vm / 1000000#, "0.0") & " MPa" & vbCrLf
+    s = s & "Deflection: " & Format$(r.delta * 1000#, "0.00") & " mm" & vbCrLf
+    s = s & "Deflection limit: " & Format$((inp.SpanM / inp.deflRatio) * 1000#, "0.00") & " mm" & vbCrLf
+    s = s & "Frequency f1: " & Format$(r.f1, "0.00") & " Hz" & vbCrLf & vbCrLf
+
+    s = s & "UTILISATION CHECKS" & vbCrLf
+    s = s & "Bending utilisation: " & Format$(r.uB, "0.00") & vbCrLf
+    s = s & "Shear utilisation: " & Format$(r.uS, "0.00") & vbCrLf
+    s = s & "Von Mises utilisation: " & Format$(r.uVM, "0.00") & vbCrLf
+    s = s & "Deflection utilisation: " & Format$(r.uD, "0.00") & vbCrLf
+    s = s & "Frequency utilisation: " & Format$(r.uF, "0.00") & vbCrLf
+    s = s & "Overall utilisation: " & Format$(r.uMax, "0.00") & "   target <= 1.00" & vbCrLf & vbCrLf
+
+    s = s & "AUTOMATIC LAYOUT OUTPUT" & vbCrLf
+    s = s & "Cross members: " & lay.nCross & vbCrLf
+    s = s & "Actual cross spacing: " & Format$(lay.actualCrossSpacing * 1000#, "0") & " mm" & vbCrLf
+    s = s & "Guard posts total: " & lay.nPosts & vbCrLf
+    s = s & "Deck panels: " & lay.nPanels & vbCrLf
+    s = s & "Estimated mass: " & Format$(lay.totalMass, "0") & " kg" & vbCrLf
+    s = s & "Estimated cost: GBP " & Format$(lay.totalCost, "0") & vbCrLf & vbCrLf
+
+    If resultPass Then
+        s = s & "ACTION: Design may be sent to the SolidWorks model generator."
+    Else
+        s = s & "ACTION: Reduce span/load, increase material strength, or add larger sections to the workbook."
+    End If
+
+    FormatValidationReport = s
+
+End Function
+
+
+
+Private Sub LoadBuiltInData()
+
+    LoadBuiltInMaterials
+    LoadBuiltInFinishes
+    LoadBuiltInSections
+    PopulateMaterialFinishCombos
+
+End Sub
+
+Private Function LoadDataWorkbook(ByVal filePath As String, ByVal quiet As Boolean) As Boolean
+
+    Dim p As String
+    Dim ext As String
+    Dim xlApp As Object
+    Dim wb As Object
+    Dim wsMaterials As Object
+    Dim wsFinishes As Object
+    Dim wsSections As Object
+    Dim msg As String
+    Dim failReason As String
+
+    LoadDataWorkbook = False
+    p = NormalizeFilePath(filePath)
+
+    If Not FileExistsSB(p) Then
+        If Not quiet Then
+            msg = "Workbook was not found:" & vbCrLf
+            msg = msg & p & vbCrLf & vbCrLf
+            msg = msg & "Check the path in the Data workbook box."
+            MsgBox msg, vbExclamation, "SmartBridge workbook not found"
+        End If
+        Exit Function
+    End If
+
+    ext = LCase$(Mid$(p, InStrRev(p, ".") + 1))
+
+    If ext <> "xlsx" And ext <> "xlsm" And ext <> "xls" Then
+        If Not quiet Then
+            MsgBox "The data file must be an Excel workbook: .xlsx, .xlsm or .xls" & vbCrLf & vbCrLf & _
+                   "Path used:" & vbCrLf & p, vbExclamation, "Wrong file type"
+        End If
+        Exit Function
+    End If
+
+    On Error GoTo ReadFail
+
+    Set xlApp = CreateObject("Excel.Application")
+    xlApp.DisplayAlerts = False
+    xlApp.Visible = False
+
+    Set wb = xlApp.Workbooks.Open(p, False, True)
+
+    Set wsMaterials = GetWorksheetByName(wb, "Materials")
+    Set wsFinishes = GetWorksheetByName(wb, "Finishes")
+    Set wsSections = GetWorksheetByName(wb, "Sections")
+
+    If wsMaterials Is Nothing Then
+        failReason = "Missing worksheet named Materials."
+        GoTo ControlledFail
+    End If
+
+    If wsFinishes Is Nothing Then
+        failReason = "Missing worksheet named Finishes."
+        GoTo ControlledFail
+    End If
+
+    If wsSections Is Nothing Then
+        failReason = "Missing worksheet named Sections."
+        GoTo ControlledFail
+    End If
+
+    matCount = 0
+    finCount = 0
+    secCount = 0
+
+    failReason = "Could not read the Materials sheet. Check headers and numeric values."
+    ReadMaterialsSheet wsMaterials
+
+    failReason = "Could not read the Finishes sheet. Check headers, multipliers and RGB values."
+    ReadFinishesSheet wsFinishes
+
+    failReason = "Could not read the Sections sheet. Check headers and numeric section data."
+    ReadSectionsSheet wsSections
+
+    If matCount <= 0 Then
+        failReason = "No material rows were loaded from Materials."
+        GoTo ControlledFail
+    End If
+
+    If finCount <= 0 Then
+        failReason = "No finish rows were loaded from Finishes."
+        GoTo ControlledFail
+    End If
+
+    If secCount <= 0 Then
+        failReason = "No section rows were loaded from Sections."
+        GoTo ControlledFail
+    End If
+
+    wb.Close False
+    xlApp.Quit
+
+    Set wsMaterials = Nothing
+    Set wsFinishes = Nothing
+    Set wsSections = Nothing
+    Set wb = Nothing
+    Set xlApp = Nothing
+
+    PopulateMaterialFinishCombos
+    LoadDataWorkbook = True
+    Exit Function
+
+ControlledFail:
+
+    On Error Resume Next
+    If Not wb Is Nothing Then wb.Close False
+    If Not xlApp Is Nothing Then xlApp.Quit
+    Set wsMaterials = Nothing
+    Set wsFinishes = Nothing
+    Set wsSections = Nothing
+    Set wb = Nothing
+    Set xlApp = Nothing
+    On Error GoTo 0
+
+    LoadBuiltInData
+
+    If Not quiet Then
+        msg = "The workbook could not be read." & vbCrLf & vbCrLf
+        msg = msg & "Path used:" & vbCrLf
+        msg = msg & p & vbCrLf & vbCrLf
+        msg = msg & "Reason:" & vbCrLf
+        msg = msg & failReason & vbCrLf & vbCrLf
+        msg = msg & "Required sheets:" & vbCrLf
+        msg = msg & "Materials, Finishes, Sections" & vbCrLf & vbCrLf
+        msg = msg & "Built-in data has been reloaded."
+
+        MsgBox msg, vbExclamation, "SmartBridge workbook read error"
+    End If
+
+    Exit Function
+
+ReadFail:
+
+    failReason = "VBA/Excel error " & Err.Number & ": " & Err.description
+    Resume ControlledFail
+
+End Function
+
+Private Function GetWorksheetByName(ByVal wb As Object, ByVal sheetName As String) As Object
+
+    Dim ws As Object
+
+    For Each ws In wb.Worksheets
+        If StrComp(Trim$(CStr(ws.Name)), sheetName, vbTextCompare) = 0 Then
+            Set GetWorksheetByName = ws
+            Exit Function
+        End If
+    Next ws
+
+    Set GetWorksheetByName = Nothing
+
+End Function
+
+Private Sub ReadMaterialsSheet(ByVal ws As Object)
+
+    Dim cName As Long
+    Dim cE As Long
+    Dim cFy As Long
+    Dim cDensity As Long
+    Dim headerRow As Long
+    Dim lastRow As Long
+    Dim r As Long
+    Dim nameText As String
+
+    cName = FindColumn(ws, "Material Name")
+    cE = FindColumn(ws, "E (Pa)")
+    cFy = FindColumn(ws, "Fy (Pa)")
+    cDensity = FindColumn(ws, "Density (kg/m³)")
+
+    If cDensity = 0 Then cDensity = FindColumn(ws, "Density (kg/m3)")
+    If cDensity = 0 Then cDensity = FindColumn(ws, "Density kg/m3")
+
+    headerRow = FindHeaderRow(ws, "Material Name")
+
+    If cName = 0 Or cE = 0 Or cFy = 0 Or cDensity = 0 Or headerRow = 0 Then
+        Err.Raise 5, "ReadMaterialsSheet", "Materials sheet headers are missing."
+    End If
+
+    lastRow = ws.Cells(ws.Rows.Count, cName).End(-4162).Row
+
+    For r = headerRow + 1 To lastRow
+        nameText = Trim$(CStr(ws.Cells(r, cName).Value))
+
+        If Len(nameText) > 0 Then
+            AddMaterial nameText, ToDouble(ws.Cells(r, cE).Value), ToDouble(ws.Cells(r, cFy).Value), ToDouble(ws.Cells(r, cDensity).Value)
+        End If
+    Next r
+
+End Sub
+
+Private Sub ReadFinishesSheet(ByVal ws As Object)
+
+    Dim cName As Long
+    Dim cMult As Long
+    Dim cRGB As Long
+    Dim headerRow As Long
+    Dim lastRow As Long
+    Dim r As Long
+    Dim rr As Long
+    Dim gg As Long
+    Dim bb As Long
+    Dim nameText As String
+
+    cName = FindColumn(ws, "Finish Name")
+    cMult = FindColumn(ws, "Multiplier")
+    cRGB = FindColumn(ws, "RGB Color (optional)")
+    If cRGB = 0 Then cRGB = FindColumn(ws, "RGB Color")
+    If cRGB = 0 Then cRGB = FindColumn(ws, "RGB")
+
+    headerRow = FindHeaderRow(ws, "Finish Name")
+
+    If cName = 0 Or cMult = 0 Or headerRow = 0 Then
+        Err.Raise 5, "ReadFinishesSheet", "Finishes sheet headers are missing."
+    End If
+
+    lastRow = ws.Cells(ws.Rows.Count, cName).End(-4162).Row
+
+    For r = headerRow + 1 To lastRow
+        nameText = Trim$(CStr(ws.Cells(r, cName).Value))
+
+        If Len(nameText) > 0 Then
+            rr = 180
+            gg = 180
+            bb = 180
+
+            If cRGB > 0 Then
+                ParseRgbText CStr(ws.Cells(r, cRGB).Value), rr, gg, bb
+            End If
+
+            AddFinish nameText, ToDouble(ws.Cells(r, cMult).Value), rr, gg, bb
+        End If
+    Next r
+
+End Sub
+
+Private Sub ReadSectionsSheet(ByVal ws As Object)
+
+    Dim cName As Long
+    Dim cDepth As Long
+    Dim cWidth As Long
+    Dim cArea As Long
+    Dim cIxx As Long
+    Dim cZxx As Long
+    Dim cMass As Long
+    Dim cCost As Long
+    Dim headerRow As Long
+    Dim lastRow As Long
+    Dim r As Long
+    Dim nameText As String
+
+    cName = FindColumn(ws, "Section Name")
+    cDepth = FindColumn(ws, "Depth (m)")
+    cWidth = FindColumn(ws, "Width (m)")
+    cArea = FindColumn(ws, "Area (m²)")
+    cIxx = FindColumn(ws, "Ixx (m?)")
+    cZxx = FindColumn(ws, "Zxx (m³)")
+    cMass = FindColumn(ws, "Mass (kg/m)")
+    cCost = FindColumn(ws, "Cost (£/m)")
+
+    If cArea = 0 Then cArea = FindColumn(ws, "Area (m2)")
+    If cArea = 0 Then cArea = FindColumn(ws, "Area m2")
+    If cIxx = 0 Then cIxx = FindColumn(ws, "Ixx (m4)")
+    If cIxx = 0 Then cIxx = FindColumn(ws, "Ixx m4")
+    If cZxx = 0 Then cZxx = FindColumn(ws, "Zxx (m3)")
+    If cZxx = 0 Then cZxx = FindColumn(ws, "Zxx m3")
+    If cCost = 0 Then cCost = FindColumn(ws, "Cost (GBP/m)")
+    If cCost = 0 Then cCost = FindColumn(ws, "Cost")
+
+    headerRow = FindHeaderRow(ws, "Section Name")
+
+    If cName = 0 Or cDepth = 0 Or cWidth = 0 Or cArea = 0 Or cIxx = 0 Or cZxx = 0 Or cMass = 0 Or cCost = 0 Or headerRow = 0 Then
+        Err.Raise 5, "ReadSectionsSheet", "Sections sheet headers are missing."
+    End If
+
+    lastRow = ws.Cells(ws.Rows.Count, cName).End(-4162).Row
+
+    For r = headerRow + 1 To lastRow
+        nameText = Trim$(CStr(ws.Cells(r, cName).Value))
+
+        If Len(nameText) > 0 Then
+            AddSection nameText, ToDouble(ws.Cells(r, cDepth).Value), ToDouble(ws.Cells(r, cWidth).Value), ToDouble(ws.Cells(r, cArea).Value), ToDouble(ws.Cells(r, cIxx).Value), ToDouble(ws.Cells(r, cZxx).Value), ToDouble(ws.Cells(r, cMass).Value), ToDouble(ws.Cells(r, cCost).Value)
+        End If
+    Next r
+
+End Sub
+
+Private Function FindColumn(ByVal ws As Object, ByVal headerText As String) As Long
+
+    Dim c As Long
+    Dim r As Long
+    Dim gotText As String
+    Dim targetText As String
+
+    targetText = NormaliseHeader(headerText)
+
+    For r = 1 To 10
+        For c = 1 To 60
+            gotText = NormaliseHeader(CStr(ws.Cells(r, c).Value))
+            If gotText = targetText Then
+                FindColumn = c
+                Exit Function
+            End If
+        Next c
+    Next r
+
+    FindColumn = 0
+
+End Function
+
+Private Function FindHeaderRow(ByVal ws As Object, ByVal requiredHeader As String) As Long
+
+    Dim c As Long
+    Dim r As Long
+    Dim gotText As String
+    Dim targetText As String
+
+    targetText = NormaliseHeader(requiredHeader)
+
+    For r = 1 To 10
+        For c = 1 To 60
+            gotText = NormaliseHeader(CStr(ws.Cells(r, c).Value))
+            If gotText = targetText Then
+                FindHeaderRow = r
+                Exit Function
+            End If
+        Next c
+    Next r
+
+    FindHeaderRow = 0
+
+End Function
+
+Private Function NormaliseHeader(ByVal s As String) As String
+
+    s = LCase$(Trim$(s))
+    s = Replace(s, "²", "2")
+    s = Replace(s, "³", "3")
+    s = Replace(s, "?", "4")
+    s = Replace(s, "£", "gbp")
+    s = Replace(s, "€", "eur")
+    s = Replace(s, " ", "")
+    s = Replace(s, "_", "")
+    s = Replace(s, "-", "")
+    s = Replace(s, "/", "")
+    s = Replace(s, "(", "")
+    s = Replace(s, ")", "")
+
+    NormaliseHeader = s
+
+End Function
+
+
+Private Sub PopulateMaterialFinishCombos()
+
+    Dim i As Long
+    Dim oldMat As String
+    Dim oldFin As String
+
+    oldMat = cboMaterial.Value
+    oldFin = cboFinish.Value
+
+    cboMaterial.Clear
+    For i = 1 To matCount
+        cboMaterial.AddItem matName(i)
+    Next i
+
+    cboFinish.Clear
+    For i = 1 To finCount
+        cboFinish.AddItem finName(i)
+    Next i
+
+    If cboMaterial.ListCount > 0 Then
+        cboMaterial.ListIndex = 0
+        For i = 0 To cboMaterial.ListCount - 1
+            If cboMaterial.List(i) = oldMat Then cboMaterial.ListIndex = i
+        Next i
+    End If
+
+    If cboFinish.ListCount > 0 Then
+        cboFinish.ListIndex = 0
+        For i = 0 To cboFinish.ListCount - 1
+            If cboFinish.List(i) = oldFin Then cboFinish.ListIndex = i
+        Next i
+    End If
+
+End Sub
+
+Private Sub LoadBuiltInMaterials()
+
+    matCount = 0
+    AddMaterial "S235 structural steel", 200000000000#, 235000000#, 7850#
+    AddMaterial "S355 structural steel", 200000000000#, 355000000#, 7850#
+    AddMaterial "6082-T6 aluminium", 69000000000#, 240000000#, 2700#
+    AddMaterial "304 stainless steel", 193000000000#, 215000000#, 8000#
+    AddMaterial "S460 Structural Steel", 200000000000#, 460000000#, 7850#
+    AddMaterial "A36 Structural Steel", 200000000000#, 250000000#, 7850#
+    AddMaterial "ASTM A588 (Weathering Steel)", 200000000000#, 345000000#, 7850#
+    AddMaterial "2205 Duplex Stainless Steel", 200000000000#, 450000000#, 7800#
+    AddMaterial "7075-T6 Aluminium", 71700000000#, 503000000#, 2810#
+    AddMaterial "CFRP (Carbon Fiber Polymer)", 150000000000#, 1500000000#, 1600#
+
+End Sub
+
+Private Sub LoadBuiltInFinishes()
+
+    finCount = 0
+    AddFinish "Painted blue finish", 1#, 30, 60, 150
+    AddFinish "Galvanised zinc finish", 1.15, 184, 184, 174
+    AddFinish "Powder coated black", 1.1, 5, 5, 5
+    AddFinish "Safety yellow painted", 1.05, 255, 200, 5
+    AddFinish "Weathering Steel Patina (Corten)", 0.9, 110, 50, 35
+    AddFinish "British Racing Green", 1.05, 0, 66, 37
+    AddFinish "Metallic Silver Epoxy", 1.12, 192, 192, 192
+    AddFinish "Concrete Grey Sealant", 1#, 169, 169, 169
+    AddFinish "Signal Red", 1.05, 186, 12, 47
+    AddFinish "Sky Blue (High Visibility)", 1.1, 135, 206, 235
+    AddFinish "Anti-Graffiti Clear Coat", 1.2, 240, 240, 240
+    AddFinish "Micaceous Iron Oxide (Grey)", 1.18, 75, 75, 75
+
+End Sub
+
+Private Sub LoadBuiltInSections()
+
+    secCount = 0
+    AddSection "RHS 100x50x5", 0.1, 0.05, 0.00135, 0.0000017, 0.000034, 10.6, 18#
+    AddSection "IPE 180", 0.18, 0.091, 0.00239, 0.0000132, 0.000146, 18.8, 42#
+    AddSection "UB 305x165x40", 0.3034, 0.165, 0.00513, 0.000085, 0.00056, 40.3, 85#
+    AddSection "UB 457x191x67", 0.4534, 0.1899, 0.00855, 0.000289, 0.00128, 67.1, 145#
+    AddSection "SHS 150x150x8", 0.15, 0.15, 0.00449, 0.0000151, 0.000201, 35.2, 70#
+    AddSection "SHS 200x200x10", 0.2, 0.2, 0.00749, 0.0000456, 0.000456, 58.8, 125#
+    AddSection "CHS 168.3x10", 0.1683, 0.1683, 0.00497, 0.0000155, 0.000184, 39#, 82#
+    AddSection "CHS 219.1x12.5", 0.2191, 0.2191, 0.00811, 0.0000435, 0.000397, 63.7, 135#
+    AddSection "PFC 230x90x32", 0.23, 0.09, 0.0041, 0.0000316, 0.000275, 32.2, 68#
+    AddSection "HEB 300", 0.3, 0.3, 0.0149, 0.0002517, 0.00168, 117#, 250#
+    AddSection "UB 203x133x25", 0.2032, 0.1332, 0.00323, 0.0000236, 0.000233, 25.1, 55#
+    AddSection "UB 254x102x22", 0.254, 0.1016, 0.0028, 0.0000284, 0.000224, 22#, 50#
+    AddSection "UB 305x102x25", 0.3048, 0.1016, 0.00318, 0.0000446, 0.000292, 24.8, 56#
+    AddSection "UB 356x127x33", 0.3556, 0.127, 0.00421, 0.0000821, 0.000462, 33.1, 75#
+    AddSection "UB 406x140x39", 0.4064, 0.1428, 0.00498, 0.000125, 0.000616, 39#, 88#
+    AddSection "UB 457x152x52", 0.4572, 0.1524, 0.00666, 0.000214, 0.000935, 52.3, 115#
+    AddSection "UB 533x210x82", 0.5334, 0.2093, 0.0105, 0.000475, 0.00178, 82.2, 185#
+    AddSection "UB 610x229x101", 0.6124, 0.2286, 0.0129, 0.000758, 0.00248, 101.2, 230#
+    AddSection "UB 762x267x147", 0.762, 0.2667, 0.0187, 0.00169, 0.00443, 147#, 330#
+    AddSection "UB 838x292x176", 0.8382, 0.2921, 0.0224, 0.00245, 0.00584, 175.9, 400#
+    AddSection "UB 914x305x224", 0.9104, 0.3041, 0.0286, 0.00376, 0.00827, 224.2, 500#
+    AddSection "UB 1016x305x314", 1.016, 0.3048, 0.04, 0.00645, 0.0127, 314#, 700#
+    AddSection "UC 152x152x23", 0.1524, 0.1524, 0.00293, 0.0000125, 0.000164, 23#, 52#
+    AddSection "UC 203x203x46", 0.2032, 0.2032, 0.00587, 0.0000457, 0.00045, 46.1, 105#
+    AddSection "UC 254x254x73", 0.254, 0.254, 0.00931, 0.000114, 0.000898, 73.1, 165#
+    AddSection "UC 305x305x118", 0.3048, 0.3048, 0.015, 0.000276, 0.00181, 118#, 265#
+    AddSection "UC 356x368x153", 0.3556, 0.3683, 0.0195, 0.000492, 0.00277, 152.9, 345#
+    AddSection "HEB 320", 0.32, 0.3, 0.0161, 0.000308, 0.00193, 127#, 285#
+    AddSection "HEB 400", 0.4, 0.3, 0.0198, 0.000577, 0.00288, 155#, 350#
+    AddSection "HEB 500", 0.5, 0.3, 0.0239, 0.00107, 0.00429, 187#, 420#
+    AddSection "HEB 600", 0.6, 0.3, 0.027, 0.00171, 0.0057, 212#, 480#
+    AddSection "RHS 200x100x8", 0.2, 0.1, 0.0045, 0.000023, 0.00023, 35.3, 80#
+    AddSection "RHS 250x150x10", 0.25, 0.15, 0.0076, 0.000065, 0.00052, 59.9, 135#
+    AddSection "RHS 300x200x12", 0.3, 0.2, 0.0114, 0.000142, 0.00094, 89.8, 205#
+    AddSection "RHS 400x200x16", 0.4, 0.2, 0.0179, 0.000374, 0.00187, 141#, 330#
+    AddSection "SHS 250x250x12.5", 0.25, 0.25, 0.0118, 0.000114, 0.00091, 92.6, 210#
+    AddSection "SHS 300x300x16", 0.3, 0.3, 0.0179, 0.000244, 0.00162, 141#, 320#
+    AddSection "SHS 400x400x20", 0.4, 0.4, 0.0304, 0.000738, 0.00369, 239#, 540#
+    AddSection "CHS 323.9x12.5", 0.3239, 0.3239, 0.0122, 0.000149, 0.00092, 96#, 215#
+    AddSection "CHS 457x16", 0.457, 0.457, 0.0222, 0.000542, 0.00237, 174#, 395#
+    AddSection "CHS 508x20", 0.508, 0.508, 0.0307, 0.000936, 0.00369, 241#, 550#
+
+End Sub
+
+Private Sub AddMaterial(ByVal nameText As String, ByVal EVal As Double, ByVal FyVal As Double, ByVal densityVal As Double)
+
+    If Len(Trim$(nameText)) = 0 Then Exit Sub
+    If EVal <= 0# Or FyVal <= 0# Or densityVal <= 0# Then Exit Sub
+
+    matCount = matCount + 1
+
+    If matCount = 1 Then
+        ReDim matName(1 To 1)
+        ReDim matE(1 To 1)
+        ReDim matFy(1 To 1)
+        ReDim matDensity(1 To 1)
+    Else
+        ReDim Preserve matName(1 To matCount)
+        ReDim Preserve matE(1 To matCount)
+        ReDim Preserve matFy(1 To matCount)
+        ReDim Preserve matDensity(1 To matCount)
+    End If
+
+    matName(matCount) = nameText
+    matE(matCount) = EVal
+    matFy(matCount) = FyVal
+    matDensity(matCount) = densityVal
+
+End Sub
+
+Private Sub AddFinish(ByVal nameText As String, ByVal multVal As Double, ByVal rVal As Long, ByVal gVal As Long, ByVal bVal As Long)
+
+    If Len(Trim$(nameText)) = 0 Then Exit Sub
+    If multVal <= 0# Then multVal = 1#
+
+    finCount = finCount + 1
+
+    If finCount = 1 Then
+        ReDim finName(1 To 1)
+        ReDim finMult(1 To 1)
+        ReDim finR(1 To 1)
+        ReDim finG(1 To 1)
+        ReDim finB(1 To 1)
+    Else
+        ReDim Preserve finName(1 To finCount)
+        ReDim Preserve finMult(1 To finCount)
+        ReDim Preserve finR(1 To finCount)
+        ReDim Preserve finG(1 To finCount)
+        ReDim Preserve finB(1 To finCount)
+    End If
+
+    finName(finCount) = nameText
+    finMult(finCount) = multVal
+    finR(finCount) = ClampByte(rVal)
+    finG(finCount) = ClampByte(gVal)
+    finB(finCount) = ClampByte(bVal)
+
+End Sub
+
+Private Sub AddSection(ByVal nameText As String, ByVal depthM As Double, ByVal widthM As Double, ByVal areaM2 As Double, ByVal ixxM4 As Double, ByVal zxxM3 As Double, ByVal massKgM As Double, ByVal costGbpM As Double)
+
+    If Len(Trim$(nameText)) = 0 Then Exit Sub
+    If areaM2 <= 0# Or ixxM4 <= 0# Or zxxM3 <= 0# Then Exit Sub
+    If depthM <= 0# Or widthM <= 0# Then Exit Sub
+
+    secCount = secCount + 1
+
+    If secCount = 1 Then
+        ReDim secName(1 To 1)
+        ReDim secDepth(1 To 1)
+        ReDim secWidth(1 To 1)
+        ReDim secArea(1 To 1)
+        ReDim secIxx(1 To 1)
+        ReDim secZxx(1 To 1)
+        ReDim secMass(1 To 1)
+        ReDim secCost(1 To 1)
+    Else
+        ReDim Preserve secName(1 To secCount)
+        ReDim Preserve secDepth(1 To secCount)
+        ReDim Preserve secWidth(1 To secCount)
+        ReDim Preserve secArea(1 To secCount)
+        ReDim Preserve secIxx(1 To secCount)
+        ReDim Preserve secZxx(1 To secCount)
+        ReDim Preserve secMass(1 To secCount)
+        ReDim Preserve secCost(1 To secCount)
+    End If
+
+    secName(secCount) = nameText
+    secDepth(secCount) = depthM
+    secWidth(secCount) = widthM
+    secArea(secCount) = areaM2
+    secIxx(secCount) = ixxM4
+    secZxx(secCount) = zxxM3
+    secMass(secCount) = massKgM
+    secCost(secCount) = costGbpM
+
+End Sub
+
+Private Function LoadSectionsFromCSV(ByVal filePath As String, ByVal quiet As Boolean) As Boolean
+
+    LoadSectionsFromCSV = False
+    MsgBox "CSV loading is no longer used. Please use the Excel workbook with Materials, Finishes and Sections sheets.", vbInformation, "SmartBridge workbook mode"
+
+End Function
+
+
+Private Function GetMaterial(ByVal materialNameText As String, ByRef EOut As Double, ByRef FyOut As Double, ByRef densityOut As Double) As Boolean
+
+    Dim i As Long
+
+    For i = 1 To matCount
+        If StrComp(Trim$(materialNameText), matName(i), vbTextCompare) = 0 Then
+            EOut = matE(i)
+            FyOut = matFy(i)
+            densityOut = matDensity(i)
+            GetMaterial = True
+            Exit Function
+        End If
+    Next i
+
+    GetMaterial = False
+
+End Function
+
+Private Function GetDeck(ByVal deckNameText As String, ByRef qDeckOut As Double, ByRef deckCostOut As Double) As Boolean
+
+    GetDeck = True
+
+    If InStr(1, deckNameText, "Timber", vbTextCompare) > 0 Then
+        qDeckOut = 0.4
+        deckCostOut = 55#
+    ElseIf InStr(1, deckNameText, "Steel", vbTextCompare) > 0 Then
+        qDeckOut = 0.75
+        deckCostOut = 95#
+    ElseIf InStr(1, deckNameText, "GRP", vbTextCompare) > 0 Then
+        qDeckOut = 0.3
+        deckCostOut = 120#
+    Else
+        GetDeck = False
+    End If
+
+End Function
+
+Private Function GetFinish(ByVal finishNameText As String, ByRef multOut As Double, ByRef rOut As Long, ByRef gOut As Long, ByRef bOut As Long) As Boolean
+
+    Dim i As Long
+
+    For i = 1 To finCount
+        If StrComp(Trim$(finishNameText), finName(i), vbTextCompare) = 0 Then
+            multOut = finMult(i)
+            rOut = finR(i)
+            gOut = finG(i)
+            bOut = finB(i)
+            GetFinish = True
+            Exit Function
+        End If
+    Next i
+
+    GetFinish = False
+
+End Function
+
+Private Sub SetStatus(ByVal statusText As String, ByVal colour As Long)
+    lblStatusValue.Caption = statusText
+    lblStatusValue.ForeColor = colour
+End Sub
+
+Private Function TryPositiveDouble(ByVal rawText As String, ByRef valueOut As Double) As Boolean
+
+    Dim s As String
+
+    TryPositiveDouble = False
+    s = Trim$(rawText)
+    s = Replace(s, ",", ".")
+
+    If Len(s) = 0 Then Exit Function
+    If Not IsNumeric(s) Then Exit Function
+
+    valueOut = CDbl(s)
+    If valueOut <= 0# Then Exit Function
+
+    TryPositiveDouble = True
+
+End Function
+
+Private Function ToDouble(ByVal rawValue As Variant) As Double
+
+    Dim s As String
+
+    If IsNumeric(rawValue) Then
+        ToDouble = CDbl(rawValue)
+        Exit Function
+    End If
+
+    s = Trim$(CStr(rawValue))
+    s = Replace(s, Chr$(34), "")
+    s = Replace(s, "GBP", "", 1, -1, vbTextCompare)
+    s = Replace(s, ChrW$(163), "")
+    s = Replace(s, "£", "")
+    s = Replace(s, " ", "")
+    s = Replace(s, ",", ".")
+
+    If Not IsNumeric(s) Then
+        Err.Raise 13, "ToDouble", "Cannot convert value to number: " & CStr(rawValue)
+    End If
+
+    ToDouble = CDbl(s)
+
+End Function
+
+Private Sub ParseRgbText(ByVal rgbText As String, ByRef rOut As Long, ByRef gOut As Long, ByRef bOut As Long)
+
+    Dim parts() As String
+
+    rgbText = Replace(rgbText, " ", "")
+    If Len(rgbText) = 0 Then Exit Sub
+
+    parts = Split(rgbText, ",")
+
+    If UBound(parts) >= 2 Then
+        If IsNumeric(parts(0)) And IsNumeric(parts(1)) And IsNumeric(parts(2)) Then
+            rOut = ClampByte(CLng(parts(0)))
+            gOut = ClampByte(CLng(parts(1)))
+            bOut = ClampByte(CLng(parts(2)))
+        End If
+    End If
+
+End Sub
+
+Private Function ClampByte(ByVal V As Long) As Long
+
+    If V < 0 Then V = 0
+    If V > 255 Then V = 255
+    ClampByte = V
+
+End Function
+
+Private Function CeilingLong(ByVal valueIn As Double) As Long
+
+    CeilingLong = CLng(Int(valueIn))
+    If valueIn > CDbl(CeilingLong) Then CeilingLong = CeilingLong + 1
+
+End Function
+
+Private Function Max6(ByVal a As Double, ByVal b As Double, ByVal c As Double, ByVal d As Double, ByVal e As Double, ByVal f As Double) As Double
+
+    Max6 = a
+    If b > Max6 Then Max6 = b
+    If c > Max6 Then Max6 = c
+    If d > Max6 Then Max6 = d
+    If e > Max6 Then Max6 = e
+    If f > Max6 Then Max6 = f
+
+End Function
+
+
+Public Property Get IsChecked() As Boolean
+    IsChecked = mChecked
+End Property
+
+Public Property Get IsStructurallySound() As Boolean
+    IsStructurallySound = mSound
+End Property
+
+Public Property Get SelectedBeamName() As String
+    SelectedBeamName = mSelectedSection
+End Property
+
+Public Property Get SelectedBeamDepthM() As Double
+    If mBestIdx > 0 Then SelectedBeamDepthM = secDepth(mBestIdx)
+End Property
+
+Public Property Get SelectedBeamWidthM() As Double
+    If mBestIdx > 0 Then SelectedBeamWidthM = secWidth(mBestIdx)
+End Property
+
+Public Property Get SelectedBeamAreaM2() As Double
+    If mBestIdx > 0 Then SelectedBeamAreaM2 = secArea(mBestIdx)
+End Property
+
+Public Property Get SpanM() As Double
+    SpanM = mSpanM
+End Property
+
+Public Property Get BridgeWidthM() As Double
+    BridgeWidthM = mBridgeWidthM
+End Property
+
+Public Property Get CrossMemberCount() As Long
+    CrossMemberCount = mCrossMembers
+End Property
+
+Public Property Get GuardPostCount() As Long
+    GuardPostCount = mPosts
+End Property
+
+Public Property Get DeckPanelCount() As Long
+    DeckPanelCount = mDeckPanels
+End Property
+
+Public Property Get ActualCrossSpacingM() As Double
+    ActualCrossSpacingM = mActualCrossSpacingM
+End Property
+
+Public Property Get EstimatedCostGBP() As Double
+    EstimatedCostGBP = mTotalCost
+End Property
+
+Public Property Get EstimatedMassKG() As Double
+    EstimatedMassKG = mTotalMass
+End Property
+
+Public Property Get ProjectName() As String
+    ProjectName = Trim$(txtProjectName.Text)
+End Property
+
+Public Property Get SaveFolder() As String
+    SaveFolder = Trim$(txtSavePath.Text)
+End Property
+
+Public Property Get DataWorkbookPath() As String
+    DataWorkbookPath = Trim$(txtDataFile.Text)
+End Property
+
+Public Property Get MaterialName() As String
+    MaterialName = cboMaterial.Value
+End Property
+
+Public Property Get DeckName() As String
+    DeckName = cboDeck.Value
+End Property
+
+Public Property Get FinishName() As String
+    FinishName = cboFinish.Value
+End Property
+
+Public Property Get FinishRed() As Long
+    FinishRed = mFinishR
+End Property
+
+Public Property Get FinishGreen() As Long
+    FinishGreen = mFinishG
+End Property
+
+Public Property Get FinishBlue() As Long
+    FinishBlue = mFinishB
+End Property
+
+Public Property Get FinishMultiplier() As Double
+    FinishMultiplier = mFinishMultiplier
+End Property
+
+Public Property Get RailHeightM() As Double
+    RailHeightM = Val(txtRailHeight.Text) / 1000#
+End Property
+
+Public Property Get DeckPanelMaxLengthM() As Double
+    DeckPanelMaxLengthM = Val(txtPanelLength.Text) / 1000#
+End Property
+
+
