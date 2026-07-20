@@ -70,8 +70,8 @@ builder never receives unvalidated data. Build failures are reported by a
 staged error handler that names the failing phase, file and SolidWorks error
 code.
 
-## Equations
-# Structural & Layout Calculations
+# Equations
+## Structural & Layout Calculations
 
 This section details the mathematical models, fixed constants, and data structures used by the SmartBridge API to validate footbridge designs, calculate utilisations, generate CAD models, and estimate project costs.
 
