@@ -1,41 +1,48 @@
 # SmartBridge — SolidWorks API Footbridge Generator
 
-A VBA automation tool for SolidWorks 2024-5 that designs and models a complete
-steel footbridge from minimal input. 
+[![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg)](LICENSE.txt)
+[![Personal use: free](https://img.shields.io/badge/Personal%20use-Free-brightgreen.svg)](LICENSE.txt)
+[![Academic submission: prohibited](https://img.shields.io/badge/Academic%20submission-Prohibited-critical.svg)](LICENSE.txt)
+[![Commercial use: by agreement](https://img.shields.io/badge/Commercial%20use-By%20agreement-orange.svg)](LICENSE.txt)
+[![SolidWorks 2024–2025](https://img.shields.io/badge/SolidWorks-2024--2025-e2231a.svg)](#requirements)
+[![VBA macro](https://img.shields.io/badge/Language-VBA-867db1.svg)](#structure)
+[![No add-ins](https://img.shields.io/badge/Add--ins-None-blue.svg)](#requirements)
+
+A VBA automation tool for SolidWorks 2024–2025 that designs and models a
+complete steel footbridge from minimal input.
 
 Enter a span, width, load class, material and finish into one UserForm. The
-program validates the design against simply-supported beam theory, selects the
-optimum standard section automatically, and generates the full design package
-with no manual modelling.
+program validates the design against simply-supported beam theory, selects
+the optimum standard section automatically, and generates the full design
+package with no manual modelling.
 
-
-<img width="1082" height="714" alt="image" src="https://github.com/user-attachments/assets/4f3ac37b-2894-41ac-b588-0a2af348e9c1" />
+<img width="1082" height="714" alt="SmartBridge UserForm and generated footbridge" src="https://github.com/user-attachments/assets/4f3ac37b-2894-41ac-b588-0a2af348e9c1" />
 
 ## What it does
 
 - **Validates before it builds.** Every catalogued beam section is checked
   against five structural criteria: bending, shear, von Mises stress,
   deflection and natural frequency (2.5 Hz minimum). The Create button stays
-  disabled until a design passes, so a failing bridge can never reach geometry.
+  disabled until a design passes, so a failing bridge can never reach
+  geometry.
 - **Selects the beam for you.** The section loop picks the lightest or
   cheapest section that passes all five checks, and reports the nearest miss
   when nothing does.
-- **Generates everything.** One validated run produces ~30 files: 7 parametric
-  part files, the assembly, a dimensioned GA drawing plus 7 part drawings with
-  a BOM table, PDF/DWG exports, a CSV bill of materials and a text design
-  report, all stamped with custom properties.
+- **Generates everything.** One validated run produces about 30 files: 7
+  parametric part files, the assembly, a dimensioned GA drawing plus 7 part
+  drawings with a BOM table, PDF/DWG exports, a CSV bill of materials and a
+  text design report, all stamped with custom properties.
 - **Reads its data from Excel.** Materials, finishes and the beam section
-  catalogue live in `SmartBridgeData.xlsx` (sheets: Materials, Finishes,
-  Sections), so the catalogue can be extended without touching the code.
-  Header matching is tolerant, and built-in data is used as a fallback if the
-  workbook is missing or malformed.
+  catalogue live in `SmartBridgeData.xlsx`, so the catalogue can be extended
+  without touching the code. Header matching is tolerant, and built-in data
+  is used as a fallback if the workbook is missing or malformed.
 
 ## Requirements
 
-- SolidWorks 2024 or 2025 (Windows) with default document templates configured
+- SolidWorks 2024 or 2025 (Windows) with default document templates
+  configured
 - Microsoft Excel (for the external data workbook)
-- No add-ins or type-library references required — all COM objects are
-  late-bound
+- No add-ins or type-library references — all COM objects are late-bound
 
 ## Usage
 
@@ -43,202 +50,213 @@ with no manual modelling.
 2. Run the macro and open the `frmSmartBridge` UserForm.
 3. Set the data workbook path and output folder, then press **Load workbook**.
 4. Enter the design parameters and press **Validate Design**.
-5. When the status shows PASS, press **Create** and wait for the staged build
-   to finish. The output folder opens on completion.
+5. When the status shows PASS, press **Create** and wait for the staged
+   build to finish. The output folder opens on completion.
+
+## Input parameters
+
+| Parameter | Meaning |
+|---|---|
+| Span | Clear span of the footbridge |
+| Width | Deck width |
+| Load class | Live load and deck load applied to the deck |
+| Material | Beam material: Young's modulus, yield strength, density |
+| Finish | Surface finish, which sets the steelwork cost multiplier |
 
 ## Data workbook format
 
-`SmartBridgeData.xlsx` needs three sheets with these headers (unit variants
-such as "m2"/"m²" and "£"/"GBP" are accepted):
+`SmartBridgeData.xlsx` needs three sheets with these headers. Unit variants
+such as "m2"/"m²" and "£"/"GBP" are accepted.
 
-| Sheet     | Columns                                                                 |
-|-----------|-------------------------------------------------------------------------|
-| Materials | Material Name, E (Pa), Fy (Pa), Density (kg/m³)                          |
-| Finishes  | Finish Name, Multiplier, RGB Color (optional)                            |
-| Sections  | Section Name, Depth (m), Width(m), Area(m²), Ixx (m⁴), Zxx (m³), Mass (kg/m), Cost (£/m)|
+| Sheet | Columns |
+|---|---|
+| Materials | Material Name, E (Pa), Fy (Pa), Density (kg/m³) |
+| Finishes | Finish Name, Multiplier, RGB Color (optional) |
+| Sections | Section Name, Depth (m), Width (m), Area (m²), Ixx (m⁴), Zxx (m³), Mass (kg/m), Cost (£/m) |
 
-All section properties are base SI: catalogue values in cm⁴/cm³ must be
-converted to m⁴/m³ before entry.
+All section properties are base SI: catalogue values in cm⁴ and cm³ must be
+converted to m⁴ and m³ before entry.
 
 ## Structure
 
-One UserForm (`frmSmartBridge`) containing all calculation and validation
-logic, plus ten modules handling parts, assembly, drawings, reports, SolidWorks
-core utilities, file utilities and shared types. The two sides communicate only
-through read-only properties and a `BridgeDesign` structure, so the model
-builder never receives unvalidated data. Build failures are reported by a
-staged error handler that names the failing phase, file and SolidWorks error
-code.
+| Part | Role |
+|---|---|
+| `frmSmartBridge` UserForm | All calculation and validation logic |
+| Ten modules | Parts, assembly, drawings, reports, SolidWorks core utilities, file utilities, shared types |
+| `BridgeDesign` structure | The only data passed from the form to the model builder |
+
+The two sides communicate only through read-only properties and the
+`BridgeDesign` structure, so the model builder never receives unvalidated
+data. Build failures are reported by a staged error handler that names the
+failing phase, file and SolidWorks error code.
+
+The calculations flow through three data structures before being bundled
+into `BridgeDesign`:
+
+| Structure | Holds |
+|---|---|
+| `BridgeInputs` | Raw user parameters: span, width, live and deck loads, material properties ($E$, $F_y$, $\rho$), safety factors |
+| `SectionCalc` | Structural results for one beam profile ($M$, $V$, $\sigma$, $\tau$, $\delta$, $f_1$) and its utilisations |
+| `LayoutCalc` | Geometric layout and commercial estimates: member counts, actual spacings, total mass, total cost |
+
+---
 
 # Equations
-## Structural & Layout Calculations
 
-This section details the mathematical models, fixed constants, and data structures used by the SmartBridge API to validate footbridge designs, calculate utilisations, generate CAD models, and estimate project costs.
+The model assumes two simply supported main beams under a uniformly
+distributed load. All quantities are SI. These formulas correspond directly
+to the generated `Report.txt`.
 
-## 1. System Constants & Fixed Geometry
+## 1. Fixed geometry
 
-The API relies on standard hardcoded geometric constants for secondary members (defined in VBA as SB constants):
+Secondary members use fixed dimensions, defined in VBA as `SB` constants.
 
 | Component | Dimension | Value (m) |
-| :--- | :--- | :--- |
-| **Cross Member** | Profile ($X \times Z$) | $0.08 \times 0.08$ |
-| **Deck** | Thickness | $0.04$ |
-| **Guard Post** | Profile Size | $0.06$ |
-| **Handrail** | Profile Size | $0.05$ |
-| **Kickplate** | Height $\times$ Thickness | $0.15 \times 0.012$ |
-| **Endplate** | Thickness | $0.012$ |
-| **Endplate Allowances** | Width / Height | $0.20$ / $0.15$ |
-| **Endplate Holes** | Diameter / Edge Dist | $0.014$ / $0.06$ |
+|---|---|---|
+| Cross member | Profile ($X \times Z$) | $0.08 \times 0.08$ |
+| Deck | Thickness | $0.04$ |
+| Guard post | Profile size | $0.06$ |
+| Handrail | Profile size | $0.05$ |
+| Kickplate | Height $\times$ thickness | $0.15 \times 0.012$ |
+| Endplate | Thickness | $0.012$ |
+| Endplate allowances | Width / height | $0.20$ / $0.15$ |
+| Endplate holes | Diameter / edge distance | $0.014$ / $0.06$ |
 
----
+## 2. Loads
 
-## 2. Core Data Structures (VBA Types)
+**Rail and cross-member allowance** (the rail allowance scales with guardrail height)
 
-The calculations flow through three primary data structures before being bundled into the final BridgeDesign record for SolidWorks generation and reporting:
-
-1. **BridgeInputs**: Stores the raw user parameters (Span, Width, live/deck loads, material properties ($E, F_y, \rho$), and safety factors).
-2. **SectionCalc**: Stores the output of the structural analysis for a specific beam profile ($M, V, \sigma, \tau, \delta, f_1$).
-3. **LayoutCalc**: Stores the automated geometric layout and commercial estimates (member counts, actual spacings, total mass, total cost).
-
----
-
-## 3. Load Calculations
-
-Before structural validation can occur, the raw inputs are converted into a uniform line load applied to the main beams.
-
-**Rail and Cross-Member Allowance**
-Accounts for the base weight of the cross members and scales the rail allowance based on the specified guardrail height.
 $$q_{\text{rc}} = q_{\text{crossAllow}} + q_{\text{railAllow}} \left( \frac{h_{\text{rail}}}{1100} \right)$$
 
-**Total Area Load (excluding main beams)**
-Combines live loads (factored for dynamic effects) and deck loads across the width of the bridge, adding the allowances.
+**Total line load on the deck** (live load factored for dynamic effects)
+
 $$q_{\text{deckTotal}} = \left( q_{\text{live}} \cdot f_{\text{dyn}} + q_{\text{deck}} \right) W_{\text{bridge}} + q_{\text{rc}}$$
 
-**Line Load Per Main Beam (qBeam or $w$)**
-Distributes the total deck load to the two main structural beams and adds the self-weight of the selected beam section.
-$$w = \frac{q_{\text{deckTotal}}}{2} + (m_{\text{beam}} \cdot g)$$
+**Line load per main beam** (shared between two beams, plus beam self-weight; `qBeam` in `SectionCalc`)
 
-*(Note: $w$ corresponds to qBeam in the SectionCalc structure).*
+$$w = \frac{q_{\text{deckTotal}}}{2} + m_{\text{beam}} \cdot g$$
 
----
+## 3. Structural analysis
 
-## 4. Structural Analysis Equations
+**Bending moment and shear force**
 
-The model assumes a simply supported beam subject to a uniformly distributed load (UDL). These formulas correspond directly to the generated Report.txt.
+$$M_{\max} = \frac{w L^2}{8}, \qquad V_{\max} = \frac{w L}{2}$$
 
-**Maximum Bending Moment (M)**
-$$M_{max} = \frac{w \cdot L^2}{8}$$
+**Bending, shear and von Mises stress** (parabolic shear distribution)
 
-**Maximum Shear Force (V)**
-$$V_{max} = \frac{w \cdot L}{2}$$
+$$\sigma = \frac{M}{Z_{xx}}, \qquad \tau = \frac{1.5\,V}{A}, \qquad \sigma_{VM} = \sqrt{\sigma^2 + 3\tau^2}$$
 
-**Bending Stress (sigma / $\sigma$)**
-$$\sigma = \frac{M}{Z_{xx}}$$
+**Deflection**
 
-**Maximum Shear Stress (tau / $\tau$)**
-Assumes a standard parabolic shear stress distribution across a generic web cross-section.
-$$\tau = \frac{1.5 \cdot V}{A}$$
+$$\delta = \frac{5\,w\,L^4}{384\,E\,I_{xx}}$$
 
-**Von Mises Stress (vm / $\sigma_{VM}$)**
-Combined stress state calculation.
-$$\sigma_{VM} = \sqrt{\sigma^2 + 3\tau^2}$$
+**First natural frequency** (checked against resonant pedestrian loading)
 
-**Maximum Deflection (delta / $\delta$)**
-$$\delta = \frac{5 \cdot w \cdot L^4}{384 \cdot E \cdot I_{xx}}$$
+$$f_1 = \frac{\pi}{2} \sqrt{\frac{E\,I_{xx}}{m_{\text{line}}\,L^4}}, \qquad m_{\text{line}} = \frac{w}{g}$$
 
-**Natural Frequency (First Mode) (f1 / $f_1$)**
-Calculates the lowest natural frequency of the beam to check against resonant pedestrian loading.
-$$f_1 = \frac{\pi}{2} \sqrt{\frac{E \cdot I_{xx}}{m_{\text{line}} \cdot L^4}}$$
+| Symbol | Meaning |
+|---|---|
+| $L$ | Span length |
+| $Z_{xx}$, $I_{xx}$, $A$ | Section modulus, second moment of area and area of the selected beam |
+| $E$ | Young's modulus |
+| $m_{\text{line}}$ | Mass per unit length of the loaded beam |
 
-*Where:*
-*   $L$ = Span length (SpanM)
-*   $Z_{xx}$, $I_{xx}$, $A$ = Section properties of the selected beam
-*   $E$ = Young's Modulus (YoungsE)
-*   $m_{\text{line}}$ = Mass per unit length of the loaded beam ($\frac{w}{g}$)
+## 4. Utilisation checks
 
----
+**Allowable stresses** ($F_y$ = yield strength, $FoS$ = factor of safety)
 
-## 5. Utilisation Checks
+$$\sigma_{\text{allow}} = \frac{F_y}{FoS}, \qquad \tau_{\text{allow}} = \frac{F_y / \sqrt{3}}{FoS}$$
 
-The design is validated by checking the calculated values against allowable limits dictated by the material yield strength ($F_y$) and the Factor of Safety ($FoS$). A utilisation score $\le 1.0$ is a pass.
+**Utilisation ratios.** A value of 1.0 or below is a pass.
 
-**Allowable Stress Limits**
-$$\sigma_{\text{allow}} = \frac{F_y}{FoS}$$
-$$\tau_{\text{allow}} = \frac{F_y / \sqrt{3}}{FoS}$$
+| Check | Utilisation |
+|---|---|
+| Bending | $u_B = \dfrac{\sigma}{\sigma_{\text{allow}}}$ |
+| Shear | $u_S = \dfrac{\tau}{\tau_{\text{allow}}}$ |
+| Von Mises | $u_{VM} = \dfrac{\sigma_{VM}}{\sigma_{\text{allow}}}$ |
+| Deflection | $u_D = \dfrac{\delta}{L / \text{Ratio}_{\text{defl}}}$ |
+| Frequency | $u_F = \dfrac{f_{\min}}{f_1}$, with $f_{\min}$ = 2.5 Hz |
 
-**Utilisation Ratios (SectionCalc)**
-*   **Bending (uB):** $u_B = \frac{\sigma}{\sigma_{\text{allow}}}$
-*   **Shear (uS):** $u_S = \frac{\tau}{\tau_{\text{allow}}}$
-*   **Von Mises (uVM):** $u_{VM} = \frac{\sigma_{VM}}{\sigma_{\text{allow}}}$
-*   **Deflection (uD):** $u_D = \frac{\delta}{L / \text{Ratio}_{\text{defl}}}$
-*   **Frequency (uF):** $u_F = \frac{f_{\text{min}}}{f_1}$ *(where $f_{\text{min}}$ is 2.5 Hz)*
+**Governing utilisation**
 
-**Overall Validation (uMax)**
-The maximum utilisation governs the pass/fail state.
-$$u_{\text{max}} = \max(u_B, u_S, u_{VM}, u_D, u_F)$$
+$$u_{\max} = \max(u_B,\ u_S,\ u_{VM},\ u_D,\ u_F)$$
 
----
+## 5. Geometric layout
 
-## 6. Geometric Layout
+**Cross members** (minimum 2)
 
-Calculates the exact quantity of required secondary members based on span length and user-defined maximum spacings (stored in LayoutCalc).
+$$n_{\text{cross}} = \left\lceil \frac{L}{S_{\text{cross}}} \right\rceil + 1, \qquad S_{\text{actual}} = \frac{L}{n_{\text{cross}} - 1}$$
 
-**Cross Members (nCross, actualCrossSpacing)**
-$$n_{\text{cross}} = \left\lceil \frac{L}{S_{\text{cross}}} \right\rceil + 1 \quad (\text{Minimum: 2})$$
-$$S_{\text{actual}} = \frac{L}{n_{\text{cross}} - 1}$$
+**Guard posts** (per side, then doubled)
 
-**Guard Posts (nPosts)**
-Calculated per side, then doubled.
-$$n_{\text{posts}} = 2 \cdot \left( \left\lceil \frac{L}{S_{\text{post}}} \right\rceil + 1 \right)$$
+$$n_{\text{posts}} = 2 \left( \left\lceil \frac{L}{S_{\text{post}}} \right\rceil + 1 \right)$$
 
-**Deck Panels (nPanels)**
-$$n_{\text{panels}} = \left\lceil \frac{L}{L_{\text{panel}}} \right\rceil \quad (\text{Minimum: 1})$$
+**Deck panels** (minimum 1)
 
----
+$$n_{\text{panels}} = \left\lceil \frac{L}{L_{\text{panel}}} \right\rceil$$
 
-## 7. Cost and Mass Estimation
+## 6. Cost and mass
 
-Calculates total material mass and applies financial unit costs depending on materials and selected aesthetic finish (finishMult). 
+| Component | Cost |
+|---|---|
+| Main beams | $C_{\text{beam}} = 2\,L \cdot Cost_{\text{beam}}$ |
+| Cross members | $C_{\text{cross}} = n_{\text{cross}} \cdot W_{\text{bridge}} \cdot Cost_{\text{cross}}$ |
+| Posts | $C_{\text{post}} = n_{\text{posts}} \cdot Cost_{\text{postEa}}$ |
+| Rails and kickplates | $C_{\text{rail}} = 4\,L \cdot Cost_{\text{rail}} + 2\,L \cdot Cost_{\text{kickplate}}$ |
+| Decking | $C_{\text{deck}} = L \cdot W_{\text{bridge}} \cdot Cost_{\text{deckType}}$ |
 
-**Component Costs**
-*   **Main Beams:** $C_{\text{beam}} = 2 \cdot L \cdot Cost_{\text{beam}}$
-*   **Cross Members:** $C_{\text{cross}} = n_{\text{cross}} \cdot W_{\text{bridge}} \cdot Cost_{\text{cross}}$
-*   **Posts:** $C_{\text{post}} = n_{\text{posts}} \cdot Cost_{\text{postEa}}$
-*   **Rails & Kickplates:** $C_{\text{rail}} = (4 \cdot L \cdot Cost_{\text{rail}}) + (2 \cdot L \cdot Cost_{\text{kickplate}})$
-*   **Decking:** $C_{\text{deck}} = L \cdot W_{\text{bridge}} \cdot Cost_{\text{deckType}}$
+**Total cost** (steelwork is scaled by the finish multiplier, decking is not)
 
-**Total Project Cost (totalCost)**
-Steelwork costs are scaled by a multiplier derived from the chosen finish.
-$$\text{Total Cost} = \left[ (C_{\text{beam}} + C_{\text{cross}} + C_{\text{post}} + C_{\text{rail}}) \cdot M_{\text{finish}} \right] + C_{\text{deck}}$$
+$$\text{Total Cost} = \left( C_{\text{beam}} + C_{\text{cross}} + C_{\text{post}} + C_{\text{rail}} \right) M_{\text{finish}} + C_{\text{deck}}$$
 
-**Total Mass (totalMass)**
-Sums the physical mass of all components to output the final expected weight of the structure.
+**Total mass**
+
 $$M_{\text{total}} = M_{\text{beams}} + M_{\text{cross}} + M_{\text{deck}} + M_{\text{posts}} + M_{\text{rails}}$$
 
+---
 
+# Limitations
 
-(disclaimer this discription was created with the help of ai)
+- Simply-supported beam theory with a uniformly distributed load only; no
+  point loads, lateral-torsional buckling, connection or fatigue checks.
+- Shear stress assumes a parabolic distribution over the whole section area.
+- Costs are estimates from the unit rates in the data workbook.
+- The geometry is a conceptual final design, not a fabrication package.
+
+(disclaimer: this description was created with the help of AI)
 
 ## Author
 
-Sajjad Mohammed - 2026.
+Sajjad Mohammed — 2026.
 
-License
+## License
 
-Copyright (c) 2026 Sajjad Mohammed. All rights reserved. This is not an
-open-source project — see LICENSE.txt for the full terms. In
-short:
+[![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-red.svg?style=for-the-badge)](LICENSE.txt)
 
+Copyright (c) 2026 Sajjad Mohammed. All rights reserved. This is **not** an
+open-source project. The full terms are in [`LICENSE.txt`](LICENSE.txt).
 
-Personal and educational use is free. Individuals, students and
-educators may view, download, run and modify the code for non-commercial
-purposes.
-You may not pass this work off as your own. No submitting it (or a
-derivative) for academic assessment, republishing it under your own name,
-or redistributing it without written permission.
-Commercial use requires a written agreement with the author. Any
-business or commercial use must be discussed with author and terms agreed
-before use begins — contact me via [https://github.com/BleoSMV].
-No warranty, no liability. The software is provided as is. It performs
-illustrative structural calculations for an academic project and must not
-be relied upon for the design of any real structure.
+| | You may | Condition |
+|:-:|---|---|
+| ✅ | View, download and run the macro | Personal, educational, non-commercial use only |
+| ✅ | Modify it | For personal, educational, non-commercial purposes only |
+| ✅ | Keep a copy | The licence file and copyright notice must stay with it |
+
+| | You may not | Consequence |
+|:-:|---|---|
+| ❌ | Submit it, or a derivative, for academic assessment | Breach of licence |
+| ❌ | Present it as your own work | Breach of licence |
+| ❌ | Redistribute it, free or paid | Needs the author's written permission |
+| ❌ | Use it commercially | Needs a written agreement with the author first |
+| ❌ | Design or build a real footbridge from it | Prohibited without the author's approval and sign-off by a qualified engineer |
+
+> [!WARNING]
+> **Students:** submitting this macro, or any derivative of it, for
+> coursework is a breach of the licence.
+
+> [!NOTE]
+> **No warranty, no liability.** The software is provided as is. It performs
+> illustrative structural calculations for an academic project and must not
+> be relied upon for the design of any real structure.
+
+Commercial or licensing enquiries: [github.com/BleoSMV](https://github.com/BleoSMV)
